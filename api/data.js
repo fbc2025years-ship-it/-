@@ -1,4 +1,11 @@
-const DATA_KEY = process.env.DATA_KEY || 'broadcast-equipment-system:data';
+const { neon } = require('@neondatabase/serverless');
+
+const DATA_KEY = process.env.DATA_KEY || 'broadcast-equipment-system';
+const DATABASE_URL =
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.POSTGRES_PRISMA_URL ||
+  process.env.NEON_DATABASE_URL;
 
 const EMPTY_DATA = {
   items: [],
@@ -11,51 +18,48 @@ const EMPTY_DATA = {
   nextLoan: 1
 };
 
-function redisConfig() {
-  return {
-    url: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN
-  };
+function getSql() {
+  if (!DATABASE_URL) {
+    throw new Error('Neon Postgres is not connected. DATABASE_URL is missing.');
+  }
+  return neon(DATABASE_URL);
 }
 
-async function redisCommand(command) {
-  const { url, token } = redisConfig();
-  if (!url || !token) {
-    throw new Error('Redis integration is not connected');
-  }
-
-  const response = await fetch(`${url}/pipeline`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify([command])
-  });
-
-  if (!response.ok) {
-    throw new Error(`Redis HTTP ${response.status}`);
-  }
-
-  const result = await response.json();
-  if (result[0]?.error) {
-    throw new Error(result[0].error);
-  }
-  return result[0]?.result;
+async function ensureTable(sql) {
+  await sql`
+    create table if not exists app_data (
+      key text primary key,
+      value jsonb not null,
+      updated_at timestamptz not null default now()
+    )
+  `;
 }
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
   try {
+    const sql = getSql();
+    await ensureTable(sql);
+
     if (req.method === 'GET') {
-      const raw = await redisCommand(['GET', DATA_KEY]);
-      return res.status(200).json(raw ? JSON.parse(raw) : EMPTY_DATA);
+      const rows = await sql`
+        select value
+        from app_data
+        where key = ${DATA_KEY}
+        limit 1
+      `;
+      return res.status(200).json(rows[0]?.value || EMPTY_DATA);
     }
 
     if (req.method === 'POST') {
       const data = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      await redisCommand(['SET', DATA_KEY, JSON.stringify(data || EMPTY_DATA)]);
+      await sql`
+        insert into app_data (key, value, updated_at)
+        values (${DATA_KEY}, ${JSON.stringify(data || EMPTY_DATA)}::jsonb, now())
+        on conflict (key)
+        do update set value = excluded.value, updated_at = now()
+      `;
       return res.status(200).json({ ok: true });
     }
 
@@ -68,3 +72,4 @@ module.exports = async function handler(req, res) {
     });
   }
 };
+
