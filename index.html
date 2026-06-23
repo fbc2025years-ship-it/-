@@ -1,0 +1,1159 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>放送委員会 備品管理</title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --ink: #182230;
+      --muted: #667085;
+      --line: #d7dde6;
+      --main: #d63384;
+      --main-dark: #9f1f62;
+      --danger: #c7352c;
+      --warn: #9a5b00;
+      --ok: #137a3d;
+      --soft: #fff0f6;
+      --shadow: 0 12px 28px rgba(24, 34, 48, .08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button, input, select, textarea { font: inherit; }
+    button {
+      min-height: 42px;
+      border: 0;
+      border-radius: 8px;
+      padding: 0 14px;
+      background: var(--main);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button.secondary { background: var(--soft); color: var(--ink); }
+    button.danger { background: var(--danger); }
+    button.ghost { background: transparent; color: var(--main-dark); border: 1px solid var(--line); }
+    button.big-action {
+      width: 100%;
+      min-height: 58px;
+      font-size: 18px;
+    }
+    input, select, textarea {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      padding: 9px 11px;
+    }
+    textarea { min-height: 76px; resize: vertical; }
+    label {
+      display: grid;
+      gap: 6px;
+      color: #344054;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 66px;
+      padding: 12px 18px;
+      background: rgba(255,255,255,.95);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(12px);
+    }
+    .brand { display: grid; gap: 2px; }
+    .brand strong { font-size: 18px; }
+    .brand span { color: var(--muted); font-size: 12px; }
+    .mode { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .tabs {
+      position: sticky;
+      top: 66px;
+      z-index: 19;
+      display: grid;
+      grid-template-columns: repeat(6, minmax(86px, 1fr));
+      gap: 6px;
+      padding: 10px;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+      overflow-x: auto;
+    }
+    .tab { background: var(--soft); color: #4a1f36; white-space: nowrap; }
+    .tab.active { background: var(--main); color: #fff; }
+    main {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    h1, h2 { margin: 0 0 12px; letter-spacing: 0; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 18px; }
+    .grid { display: grid; gap: 12px; }
+    .two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+    .search { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 12px; }
+    .list { display: grid; gap: 10px; }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+    .card-head {
+      display: grid;
+      grid-template-columns: 92px 1fr auto;
+      gap: 12px;
+      align-items: start;
+    }
+    .photo {
+      width: 92px;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #eef3f7;
+    }
+    .photo.placeholder {
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+      padding: 6px;
+    }
+    .selected-photo { width: min(280px, 100%); aspect-ratio: 4 / 3; }
+    .title { display: grid; gap: 2px; }
+    .title strong { font-size: 16px; }
+    .title span, .muted { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: #fff0f6;
+      color: var(--ok);
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .badge.loan { background: #fff1df; color: var(--warn); }
+    .badge.repair { background: #ffeceb; color: var(--danger); }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .notice {
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #fff0f6;
+      color: var(--main-dark);
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .notice.error { background: #ffeceb; color: #9f2318; }
+    .hidden { display: none !important; }
+    .scanner {
+      display: grid;
+      place-items: center;
+      min-height: 260px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101828;
+      color: #fff;
+    }
+    .reader-input {
+      font-size: 24px;
+      min-height: 58px;
+      letter-spacing: 0;
+    }
+    video { width: 100%; max-height: 420px; object-fit: cover; }
+    canvas.qr {
+      width: min(260px, 100%);
+      height: auto;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: #f0f4f8; color: #475467; }
+    .table-wrap { overflow-x: auto; }
+    .admin-only { display: none; }
+    body.admin-mode .admin-only { display: block; }
+    body.admin-mode button.admin-only { display: inline-flex; align-items: center; justify-content: center; }
+    .mobile-camera { display: block; }
+    .room-map {
+      position: relative;
+      min-height: 520px;
+      border: 2px solid #e8adc8;
+      border-radius: 8px;
+      background:
+        linear-gradient(90deg, rgba(214,51,132,.07) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(214,51,132,.07) 1px, transparent 1px),
+        #fffafd;
+      background-size: 40px 40px;
+      overflow: hidden;
+    }
+    .floorplan-image {
+      display: block;
+      width: 100%;
+      min-height: 520px;
+      object-fit: contain;
+      background: #fff;
+    }
+    .map-empty {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      top: 16px;
+    }
+    .map-pin {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      border: 2px solid #d63384;
+      border-radius: 999px;
+      background: rgba(255,255,255,.96);
+      box-shadow: var(--shadow);
+      padding: 8px 12px;
+      display: grid;
+      gap: 2px;
+      min-width: 116px;
+      text-align: center;
+      color: #7a2853;
+      cursor: pointer;
+    }
+    .map-pin:hover { background: #fff0f6; }
+    .map-pin strong { color: #9f1f62; }
+    .map-pin small { color: var(--muted); font-weight: 700; }
+    .map-items {
+      display: grid;
+      gap: 4px;
+      max-height: 120px;
+      overflow: auto;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .map-detail {
+      margin-top: 12px;
+    }
+    @media (max-width: 760px) {
+      .topbar { align-items: start; }
+      .mode button { min-height: 36px; }
+      .tabs { top: 66px; grid-template-columns: repeat(6, minmax(82px, 1fr)); }
+      main { padding: 12px; }
+      .two, .three, .meta, .search { grid-template-columns: 1fr; }
+      .card-head { grid-template-columns: 76px 1fr; }
+      .card-head .badge { grid-column: 2; justify-self: start; }
+      .photo { width: 76px; }
+      .actions button { flex: 1 1 130px; }
+      .desktop-reader-note { display: none; }
+      .room-map { min-height: 620px; }
+      .map-pin { min-width: 104px; font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <strong>放送委員会 備品管理</strong>
+      <span>備品の貸出・返却</span>
+    </div>
+    <div class="mode">
+      <button type="button" id="adminModeButton">管理者ツール</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-view="scan">貸出・返却</button>
+    <button class="tab" data-view="items">備品一覧</button>
+    <button class="tab" data-view="map">配置図</button>
+    <button class="tab" data-view="loans">貸出中</button>
+    <button class="tab" data-view="history">履歴</button>
+    <button class="tab admin-only" data-view="admin">管理</button>
+  </nav>
+
+  <main>
+    <div id="message"></div>
+
+    <section id="scan" class="view">
+      <div class="panel">
+        <h1>貸出・返却</h1>
+        <p class="muted desktop-reader-note">備品IDを手入力するか、USBコードリーダーでQRコードを読み取ると、自動で備品が表示されます。</p>
+        <form id="readerForm" class="grid">
+          <label>備品IDを入力
+            <input id="readerInput" class="reader-input" autocomplete="off" placeholder="例：EQ-0001">
+          </label>
+          <button type="submit" class="secondary">IDで表示</button>
+        </form>
+      </div>
+
+      <div class="panel mobile-camera">
+        <h2>カメラでQR読み取り</h2>
+        <div class="scanner" id="scanner">カメラを開始してください</div>
+        <div class="actions">
+          <button type="button" id="startScanButton">カメラ開始</button>
+          <button type="button" class="secondary" id="stopScanButton">停止</button>
+        </div>
+      </div>
+
+      <div id="selectedPanel" class="panel hidden"></div>
+    </section>
+
+    <section id="items" class="view hidden">
+      <div class="panel">
+        <h1>備品一覧</h1>
+        <div class="search">
+          <input id="searchInput" placeholder="備品名、ID、カテゴリ、保管場所で検索">
+          <button type="button" class="secondary" id="sampleButton">サンプル追加</button>
+        </div>
+        <div id="itemList" class="list"></div>
+      </div>
+    </section>
+
+    <section id="map" class="view hidden">
+      <div class="panel">
+        <h1>放送室の配置図</h1>
+        <p class="muted">アップロードした見取り図の上で、棚や放送卓のIDをクリックすると中にある備品を見られます。</p>
+        <div id="roomMap" class="room-map"></div>
+        <div id="mapDetail" class="map-detail"></div>
+      </div>
+    </section>
+
+    <section id="loans" class="view hidden">
+      <div class="panel">
+        <h1>貸出中</h1>
+        <div id="loanList" class="list"></div>
+      </div>
+    </section>
+
+    <section id="history" class="view hidden">
+      <div class="panel">
+        <h1>貸出履歴</h1>
+        <div class="search">
+          <input id="historySearch" placeholder="備品ID、備品名、借りた人で検索">
+          <button type="button" class="secondary" id="clearHistorySearch">クリア</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>備品</th>
+                <th>借りた人</th>
+                <th>貸出</th>
+                <th>返却</th>
+                <th>メモ</th>
+              </tr>
+            </thead>
+            <tbody id="historyBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="admin" class="view hidden admin-only">
+      <div class="panel">
+        <h2>放送室の見取り図</h2>
+        <p class="muted">棚や放送卓とIDを書き込んだ見取り図画像を登録できます。保管場所名を保存すると、名前に合わせて配置図へ自動で割り振られます。</p>
+        <input type="hidden" id="floorplanData">
+        <label>見取り図画像
+          <input id="floorplanImage" type="file" accept="image/*">
+        </label>
+        <div class="actions">
+          <button type="button" class="secondary" id="clearFloorplanButton">見取り図を外す</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>備品登録・編集</h2>
+        <form id="itemForm" class="grid two">
+          <input type="hidden" id="itemId">
+          <input type="hidden" id="itemPhotoData">
+          <label>備品名
+            <input id="itemName" required placeholder="例：ワイヤレスマイク A">
+          </label>
+          <label>カテゴリ
+            <input id="itemCategory" placeholder="例：マイク、カメラ、ケーブル">
+          </label>
+          <label>型番
+            <input id="itemModel" placeholder="例：SM58">
+          </label>
+          <label>状態
+            <select id="itemCondition">
+              <option>良好</option>
+              <option>要確認</option>
+              <option>修理中</option>
+              <option>廃棄予定</option>
+            </select>
+          </label>
+          <label>保管場所
+            <select id="itemLocation"></select>
+          </label>
+          <label>備品写真
+            <input id="itemPhoto" type="file" accept="image/*">
+          </label>
+          <label style="grid-column: 1 / -1;">メモ
+            <input id="itemNote" placeholder="付属品や注意事項">
+          </label>
+          <div class="actions" style="grid-column: 1 / -1;">
+            <button type="submit">備品を保存</button>
+            <button type="button" class="secondary" id="clearItemForm">入力をクリア</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h2>保管場所管理</h2>
+        <form id="locationForm" class="grid two">
+          <input type="hidden" id="locationId">
+          <input type="hidden" id="locationPhotoData">
+          <label>保管場所名
+            <input id="locationName" required placeholder="例：放送室 棚A">
+          </label>
+          <label>保管場所写真
+            <input id="locationPhoto" type="file" accept="image/*">
+          </label>
+          <label style="grid-column: 1 / -1;">説明
+            <input id="locationDescription" placeholder="例：マイク類、右上段">
+          </label>
+          <div class="actions" style="grid-column: 1 / -1;">
+            <button type="submit">保管場所を保存</button>
+            <button type="button" class="secondary" id="clearLocationForm">入力をクリア</button>
+          </div>
+        </form>
+        <div id="locationList" class="list" style="margin-top: 14px;"></div>
+      </div>
+
+      <div class="panel">
+        <h2>選択削除</h2>
+        <p class="muted">消したい備品にチェックを入れて削除します。まとめて全部消す操作はありません。</p>
+        <div class="actions">
+          <button type="button" class="danger" id="deleteSelectedButton">選択した備品を削除</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>データ管理</h2>
+        <p class="muted">データはこのブラウザ内に保存されます。別のパソコンやスマホに移す時は、書き出しと読み込みを使ってください。</p>
+        <div id="sharedStatus" class="notice">この端末のブラウザに保存しています。</div>
+        <div class="actions">
+          <button type="button" class="secondary" id="exportButton">バックアップを書き出し</button>
+          <button type="button" class="secondary" id="importButton">バックアップを読み込み</button>
+          <input id="importFile" type="file" accept="application/json" class="hidden">
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const KEY = 'broadcast-equipment-system-v3';
+    const OLD_KEY = 'broadcast-equipment-system-v2';
+    const initialData = {
+      items: [],
+      locations: [],
+      loans: [],
+      history: [],
+      floorplan: '',
+      nextItem: 1,
+      nextLocation: 1,
+      nextLoan: 1
+    };
+    let data = loadData();
+    let stream = null;
+    let detectorTimer = null;
+    let sharedServerReady = false;
+    let sharedApplying = false;
+    let sharedSaveTimer = null;
+
+    const $ = id => document.getElementById(id);
+    const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+    }[char]));
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => activate(tab.dataset.view));
+    });
+    $('adminModeButton').addEventListener('click', () => {
+      if (document.body.classList.contains('admin-mode')) {
+        document.body.classList.remove('admin-mode');
+        $('adminModeButton').textContent = '管理者ツール';
+        activate('scan');
+        return;
+      }
+      document.body.classList.add('admin-mode');
+      $('adminModeButton').textContent = '管理者ツールを終了';
+      activate('admin');
+    });
+    $('readerForm').addEventListener('submit', event => {
+      event.preventDefault();
+      selectItemById($('readerInput').value.trim());
+    });
+    $('readerInput').addEventListener('input', () => {
+      const value = $('readerInput').value.trim();
+      if (/^EQ-\d{4,}$/i.test(value)) selectItemById(value);
+    });
+    $('searchInput').addEventListener('input', render);
+    $('historySearch').addEventListener('input', renderHistory);
+    $('clearHistorySearch').addEventListener('click', () => { $('historySearch').value = ''; renderHistory(); });
+    $('sampleButton').addEventListener('click', addSamples);
+    $('startScanButton').addEventListener('click', startScan);
+    $('stopScanButton').addEventListener('click', stopScan);
+    $('itemForm').addEventListener('submit', saveItem);
+    $('locationForm').addEventListener('submit', saveLocation);
+    $('clearItemForm').addEventListener('click', clearItemForm);
+    $('clearLocationForm').addEventListener('click', clearLocationForm);
+    $('deleteSelectedButton').addEventListener('click', deleteSelectedItems);
+    $('exportButton').addEventListener('click', exportData);
+    $('importButton').addEventListener('click', () => $('importFile').click());
+    $('importFile').addEventListener('change', importData);
+    $('itemPhoto').addEventListener('change', event => readPhoto(event.target.files[0], $('itemPhotoData')));
+    $('locationPhoto').addEventListener('change', event => readPhoto(event.target.files[0], $('locationPhotoData')));
+    $('floorplanImage').addEventListener('change', event => readPhoto(event.target.files[0], $('floorplanData'), image => {
+      data.floorplan = image;
+      saveData();
+      renderMap();
+      showMessage('見取り図を保存しました。');
+    }));
+    $('clearFloorplanButton').addEventListener('click', () => {
+      data.floorplan = '';
+      $('floorplanData').value = '';
+      saveData();
+      renderMap();
+      showMessage('見取り図を外しました。');
+    });
+
+    render();
+    initSharedServerSync();
+    setTimeout(() => $('readerInput').focus(), 150);
+
+    function loadData() {
+      try {
+        const saved = localStorage.getItem(KEY) || localStorage.getItem(OLD_KEY) || '{}';
+        return normalizeData(JSON.parse(saved));
+      } catch {
+        return structuredClone(initialData);
+      }
+    }
+
+    function saveData() {
+      localStorage.setItem(KEY, JSON.stringify(data));
+      scheduleSharedSave();
+    }
+
+    function normalizeData(source) {
+      const parsed = source || {};
+      return {
+        ...structuredClone(initialData),
+        ...parsed,
+        items: (parsed.items || []).map(item => ({ photo: '', ...item })),
+        locations: (parsed.locations || []).map(location => ({ photo: '', ...location }))
+      };
+    }
+
+    function updateSharedStatus(text, isError = false) {
+      const el = $('sharedStatus');
+      if (!el) return;
+      el.textContent = text;
+      el.classList.toggle('error', isError);
+    }
+
+    async function initSharedServerSync() {
+      if (location.protocol === 'file:') {
+        updateSharedStatus('この端末のブラウザに保存しています。Vercelに公開すると共有データを使えます。');
+        return;
+      }
+      try {
+        const response = await fetch('./api/data', { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(await apiErrorMessage(response));
+        }
+        const remote = await response.json();
+        sharedApplying = true;
+        data = normalizeData(remote);
+        localStorage.setItem(KEY, JSON.stringify(data));
+        render();
+        sharedApplying = false;
+        sharedServerReady = true;
+        updateSharedStatus('Vercelの共有データを使用中です。PC・スマホで同じデータになります。');
+      } catch (error) {
+        updateSharedStatus(`共有データに接続できません。この端末だけに保存します。${error.message}`, true);
+      }
+    }
+
+    function scheduleSharedSave(force = false) {
+      if (!sharedServerReady || sharedApplying || location.protocol === 'file:') return;
+      clearTimeout(sharedSaveTimer);
+      sharedSaveTimer = setTimeout(() => {
+        fetch('./api/data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        }).then(async response => {
+          if (!response.ok) throw new Error(await apiErrorMessage(response));
+          updateSharedStatus('共有データに保存しました。');
+        }).catch(error => {
+          updateSharedStatus(`共有データへ保存できません: ${error.message}`, true);
+        });
+      }, force ? 0 : 400);
+    }
+
+    async function apiErrorMessage(response) {
+      try {
+        const body = await response.json();
+        return body.message || body.error || `HTTP ${response.status}`;
+      } catch {
+        return `HTTP ${response.status}`;
+      }
+    }
+
+    function activate(viewName) {
+      if (viewName === 'admin' && !document.body.classList.contains('admin-mode')) return;
+      document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
+      $(viewName).classList.remove('hidden');
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === viewName));
+      if (viewName !== 'scan') stopScan();
+      render();
+      if (viewName === 'scan') setTimeout(() => $('readerInput').focus(), 80);
+    }
+
+    function render() {
+      renderLocationOptions();
+      renderItems();
+      renderMap();
+      renderLoans();
+      renderLocations();
+      renderHistory();
+    }
+
+    function itemStatus(item) {
+      const activeLoan = data.loans.find(loan => loan.itemId === item.id);
+      if (activeLoan) return { label: '貸出中', className: 'loan', loan: activeLoan };
+      if (item.condition === '修理中' || item.condition === '廃棄予定') return { label: item.condition, className: 'repair' };
+      return { label: '保管中', className: '' };
+    }
+
+    function renderItems() {
+      const query = $('searchInput').value.trim().toLowerCase();
+      const items = data.items.filter(item => {
+        const location = locationName(item.locationId);
+        return [item.id, item.name, item.category, item.model, location, item.condition].join(' ').toLowerCase().includes(query);
+      });
+      $('itemList').innerHTML = items.map(item => itemCard(item)).join('') || '<p class="muted">備品がまだ登録されていません。</p>';
+      document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', handleAction));
+    }
+
+    function itemCard(item, options = {}) {
+      const status = itemStatus(item);
+      const location = data.locations.find(candidate => candidate.id === item.locationId);
+      return `
+        <article class="card">
+          <div class="card-head">
+            ${photoHtml(item.photo, '備品写真')}
+            <div class="title">
+              <strong>${escapeHtml(item.name)}</strong>
+              <span>${escapeHtml(item.id)} / ${escapeHtml(item.category || '未分類')}</span>
+              <span>保管場所: ${escapeHtml(location?.name || '未設定')}</span>
+            </div>
+            <span class="badge ${status.className}">${escapeHtml(status.label)}</span>
+          </div>
+          <div class="meta">
+            <span>型番: ${escapeHtml(item.model || '-')}</span>
+            <span>状態: ${escapeHtml(item.condition || '-')}</span>
+            <span>更新: ${formatDate(item.updatedAt)}</span>
+            <span>${escapeHtml(item.note || '')}</span>
+          </div>
+          ${location?.photo ? `<div class="card">${photoHtml(location.photo, '保管場所写真')}<span class="muted">保管場所写真: ${escapeHtml(location.name)}</span></div>` : ''}
+          ${status.loan ? `<div class="notice">借りている人: ${escapeHtml(status.loan.borrower)} / 貸出: ${formatDate(status.loan.checkoutAt)}</div>` : ''}
+          <div class="actions">
+            ${options.simple ? selectedActions(item, status) : ''}
+            <button type="button" class="secondary" data-action="select" data-id="${escapeHtml(item.id)}">貸出・返却で開く</button>
+            <button type="button" class="secondary" data-action="qr" data-id="${escapeHtml(item.id)}">QR表示</button>
+            <button type="button" class="secondary admin-only" data-action="edit" data-id="${escapeHtml(item.id)}">編集</button>
+            <label class="admin-only" style="display:inline-flex; width:auto; min-height:42px; align-items:center; gap:8px;">
+              <input type="checkbox" class="delete-check" value="${escapeHtml(item.id)}" style="width:auto; min-height:auto;"> 削除候補
+            </label>
+          </div>
+        </article>
+      `;
+    }
+
+    function selectedActions(item, status) {
+      if (status.loan) {
+        return `<button type="button" class="danger big-action" data-action="return" data-id="${escapeHtml(item.id)}">返却する</button>`;
+      }
+      return `
+        <input data-borrower-for="${escapeHtml(item.id)}" placeholder="借りる人（空でも可）">
+        <button type="button" class="big-action" data-action="checkout" data-id="${escapeHtml(item.id)}">貸出する</button>
+      `;
+    }
+
+    function photoHtml(src, label) {
+      if (src) return `<img class="photo" src="${src}" alt="${escapeHtml(label)}">`;
+      return `<div class="photo placeholder">${escapeHtml(label)}なし</div>`;
+    }
+
+    function handleAction(event) {
+      const id = event.currentTarget.dataset.id;
+      const item = data.items.find(candidate => candidate.id === id);
+      if (!item) return;
+      const action = event.currentTarget.dataset.action;
+      if (action === 'qr') showQr(item);
+      if (action === 'select') {
+        activate('scan');
+        showSelectedItem(item);
+      }
+      if (action === 'checkout') quickCheckout(item);
+      if (action === 'return') quickReturn(item);
+      if (action === 'edit') {
+        activate('admin');
+        $('itemId').value = item.id;
+        $('itemName').value = item.name;
+        $('itemCategory').value = item.category || '';
+        $('itemModel').value = item.model || '';
+        $('itemCondition').value = item.condition || '良好';
+        $('itemLocation').value = item.locationId || '';
+        $('itemNote').value = item.note || '';
+        $('itemPhotoData').value = item.photo || '';
+      }
+    }
+
+    function selectItemById(rawId) {
+      const id = String(rawId || '').trim().toUpperCase();
+      if (!id) return;
+      const item = data.items.find(candidate => candidate.id.toUpperCase() === id);
+      if (!item) {
+        $('selectedPanel').classList.add('hidden');
+        showMessage(`備品ID ${id} が見つかりません。`, true);
+        return;
+      }
+      $('readerInput').value = '';
+      showSelectedItem(item);
+    }
+
+    function showSelectedItem(item) {
+      $('selectedPanel').classList.remove('hidden');
+      $('selectedPanel').innerHTML = `<h2>選択中の備品</h2>${itemCard(item, { simple: true })}`;
+      document.querySelectorAll('#selectedPanel [data-action]').forEach(button => button.addEventListener('click', handleAction));
+      showMessage(`${item.name} を表示しました。`);
+    }
+
+    function quickCheckout(item) {
+      if (data.loans.some(loan => loan.itemId === item.id)) return showMessage('この備品はすでに貸出中です。', true);
+      const borrowerInput = Array.from(document.querySelectorAll('[data-borrower-for]'))
+        .find(input => input.dataset.borrowerFor === item.id);
+      data.loans.push({
+        id: `LOAN-${String(data.nextLoan++).padStart(4, '0')}`,
+        itemId: item.id,
+        borrower: borrowerInput?.value.trim() || '未入力',
+        dueDate: '',
+        note: '',
+        checkoutAt: new Date().toISOString()
+      });
+      saveData();
+      showMessage('貸出を記録しました。');
+      render();
+      showSelectedItem(item);
+    }
+
+    function quickReturn(item) {
+      const loan = data.loans.find(candidate => candidate.itemId === item.id);
+      if (!loan) return showMessage('貸出中の記録が見つかりません。', true);
+      data.history.unshift({
+        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+        itemId: item.id,
+        itemName: item.name,
+        borrower: loan.borrower,
+        checkoutAt: loan.checkoutAt,
+        dueDate: loan.dueDate,
+        returnedAt: new Date().toISOString(),
+        note: loan.note || ''
+      });
+      data.loans = data.loans.filter(candidate => candidate.itemId !== item.id);
+      saveData();
+      showMessage('返却を記録しました。');
+      render();
+      showSelectedItem(item);
+    }
+
+    function showQr(item) {
+      let panel = document.getElementById('qrPanel');
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'qrPanel';
+        panel.className = 'panel';
+        $('items').prepend(panel);
+      }
+      panel.innerHTML = `<h2>${escapeHtml(item.name)}</h2><canvas class="qr"></canvas><p class="muted">${escapeHtml(item.id)}</p>`;
+      QRCode.toCanvas(panel.querySelector('canvas'), item.id, { width: 240, margin: 2 });
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function saveItem(event) {
+      event.preventDefault();
+      const id = $('itemId').value || `EQ-${String(data.nextItem++).padStart(4, '0')}`;
+      const existing = data.items.find(item => item.id === id);
+      const item = {
+        id,
+        name: $('itemName').value.trim(),
+        category: $('itemCategory').value.trim(),
+        model: $('itemModel').value.trim(),
+        condition: $('itemCondition').value,
+        locationId: $('itemLocation').value,
+        photo: $('itemPhotoData').value || existing?.photo || '',
+        note: $('itemNote').value.trim(),
+        createdAt: existing?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      if (existing) Object.assign(existing, item);
+      else data.items.push(item);
+      saveData();
+      clearItemForm();
+      showMessage('備品を保存しました。');
+      render();
+    }
+
+    function saveLocation(event) {
+      event.preventDefault();
+      const id = $('locationId').value || `LOC-${String(data.nextLocation++).padStart(3, '0')}`;
+      const existing = data.locations.find(location => location.id === id);
+      const location = {
+        id,
+        name: $('locationName').value.trim(),
+        description: $('locationDescription').value.trim(),
+        photo: $('locationPhotoData').value || existing?.photo || '',
+        updatedAt: new Date().toISOString()
+      };
+      if (existing) Object.assign(existing, location);
+      else data.locations.push(location);
+      saveData();
+      clearLocationForm();
+      showMessage('保管場所を保存しました。');
+      render();
+    }
+
+    function renderLoans() {
+      $('loanList').innerHTML = data.loans.map(loan => {
+        const item = data.items.find(candidate => candidate.id === loan.itemId) || {};
+        return `
+          <article class="card">
+            <div class="card-head">
+              ${photoHtml(item.photo, '備品写真')}
+              <div class="title">
+                <strong>${escapeHtml(item.name || loan.itemId)}</strong>
+                <span>${escapeHtml(loan.itemId)} / 借りている人: ${escapeHtml(loan.borrower)}</span>
+              </div>
+              <span class="badge loan">貸出中</span>
+            </div>
+            <div class="meta">
+              <span>貸出: ${formatDate(loan.checkoutAt)}</span>
+              <span>場所: ${escapeHtml(locationName(item.locationId) || '-')}</span>
+              <span>メモ: ${escapeHtml(loan.note || '-')}</span>
+              <span></span>
+            </div>
+            <div class="actions">
+              <button type="button" class="secondary" data-action="select" data-id="${escapeHtml(loan.itemId)}">貸出・返却で開く</button>
+            </div>
+          </article>
+        `;
+      }).join('') || '<p class="muted">貸出中の備品はありません。</p>';
+      document.querySelectorAll('#loanList [data-action]').forEach(button => button.addEventListener('click', handleAction));
+    }
+
+    function renderHistory() {
+      const query = $('historySearch').value.trim().toLowerCase();
+      const rows = data.history.filter(row => [row.itemId, row.itemName, row.borrower, row.note].join(' ').toLowerCase().includes(query));
+      $('historyBody').innerHTML = rows.map(row => `
+        <tr>
+          <td>${escapeHtml(row.itemName)}<br><span class="muted">${escapeHtml(row.itemId)}</span></td>
+          <td>${escapeHtml(row.borrower)}</td>
+          <td>${formatDate(row.checkoutAt)}</td>
+          <td>${formatDate(row.returnedAt)}</td>
+          <td>${escapeHtml(row.note || '')}</td>
+        </tr>
+      `).join('') || '<tr><td colspan="5">履歴がありません。</td></tr>';
+    }
+
+    function renderLocations() {
+      $('locationList').innerHTML = data.locations.map(location => `
+        <article class="card">
+          <div class="card-head">
+            ${photoHtml(location.photo, '保管場所写真')}
+            <div class="title">
+              <strong>${escapeHtml(location.name)}</strong>
+              <span>${escapeHtml(location.id)}</span>
+              <span>${escapeHtml(location.description || '')}</span>
+            </div>
+            <span></span>
+          </div>
+          <div class="actions">
+            <button type="button" class="secondary" onclick="editLocation('${escapeHtml(location.id)}')">編集</button>
+          </div>
+        </article>
+      `).join('') || '<p class="muted">保管場所がまだ登録されていません。</p>';
+    }
+
+    function renderMap() {
+      const map = $('roomMap');
+      const pins = data.locations.map((location, index) => {
+        const position = autoMapPosition(location, index);
+        const items = data.items.filter(item => item.locationId === location.id);
+        return `
+          <button type="button" class="map-pin" data-map-location="${escapeHtml(location.id)}" style="left:${position.x}%; top:${position.y}%;">
+            <strong>${escapeHtml(location.id)}</strong>
+            <small>${escapeHtml(location.name)} / ${items.length}点</small>
+          </button>
+        `;
+      }).join('');
+      map.innerHTML = `
+        ${data.floorplan ? `<img class="floorplan-image" src="${data.floorplan}" alt="放送室の見取り図">` : '<div class="notice map-empty">管理者ツールで放送室の見取り図を登録してください。</div>'}
+        ${pins || '<div class="notice" style="position:absolute; left:16px; right:16px; top:58px;">保管場所を登録すると配置図に表示されます。</div>'}
+      `;
+      document.querySelectorAll('[data-map-location]').forEach(button => {
+        button.addEventListener('click', () => showMapLocation(button.dataset.mapLocation));
+      });
+    }
+
+    function showMapLocation(locationId) {
+      const location = data.locations.find(candidate => candidate.id === locationId);
+      if (!location) return;
+      const items = data.items.filter(item => item.locationId === locationId);
+      $('mapDetail').innerHTML = `
+        <div class="panel">
+          <h2>${escapeHtml(location.name)}（${escapeHtml(location.id)}）</h2>
+          <p class="muted">${escapeHtml(location.description || '')}</p>
+          <div class="list">
+            ${items.length ? items.map(item => itemCard(item)).join('') : '<p class="muted">この保管場所に登録されている備品はありません。</p>'}
+          </div>
+        </div>
+      `;
+      document.querySelectorAll('#mapDetail [data-action]').forEach(button => button.addEventListener('click', handleAction));
+    }
+
+    window.editLocation = function(id) {
+      const location = data.locations.find(candidate => candidate.id === id);
+      if (!location) return;
+      $('locationId').value = location.id;
+      $('locationName').value = location.name;
+      $('locationDescription').value = location.description || '';
+      $('locationPhotoData').value = location.photo || '';
+    };
+
+    function autoMapPosition(location, index) {
+      const text = `${location.id || ''} ${location.name || ''} ${location.description || ''}`.toLowerCase();
+      if (text.includes('放送卓') || text.includes('操作卓') || text.includes('卓') || text.includes('desk')) return { x: 76, y: 76 };
+      if (text.includes('入口') || text.includes('ドア') || text.includes('door')) return { x: 14, y: 86 };
+      if (text.includes('黒板') || text.includes('前') || text.includes('board')) return { x: 50, y: 12 };
+      if (text.includes('棚a') || text.includes('棚 a') || text.includes('a棚') || text.includes('loc-001')) return { x: 20, y: 28 };
+      if (text.includes('棚b') || text.includes('棚 b') || text.includes('b棚') || text.includes('loc-002')) return { x: 80, y: 28 };
+      if (text.includes('棚c') || text.includes('棚 c') || text.includes('c棚')) return { x: 20, y: 62 };
+      if (text.includes('棚d') || text.includes('棚 d') || text.includes('d棚')) return { x: 80, y: 62 };
+      if (text.includes('机下') || text.includes('下')) return { x: 75, y: 72 };
+      if (text.includes('窓')) return { x: 92, y: 42 };
+      return defaultMapPosition(index);
+    }
+
+    function defaultMapPosition(index) {
+      const positions = [
+        { x: 20, y: 28 },
+        { x: 75, y: 72 },
+        { x: 72, y: 25 },
+        { x: 30, y: 70 },
+        { x: 50, y: 48 },
+      ];
+      return positions[index % positions.length];
+    }
+
+    function renderLocationOptions() {
+      $('itemLocation').innerHTML = '<option value="">未設定</option>' + data.locations
+        .map(location => `<option value="${escapeHtml(location.id)}">${escapeHtml(location.name)}</option>`)
+        .join('');
+    }
+
+    async function startScan() {
+      try {
+        if (!('BarcodeDetector' in window)) {
+          $('scanner').textContent = 'このブラウザではカメラ読み取りが使えません。備品IDを手入力してください。';
+          return;
+        }
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        const video = document.createElement('video');
+        video.setAttribute('playsinline', '');
+        video.srcObject = stream;
+        await video.play();
+        $('scanner').innerHTML = '';
+        $('scanner').append(video);
+        const detector = new BarcodeDetector({ formats: ['qr_code'] });
+        detectorTimer = setInterval(async () => {
+          const codes = await detector.detect(video);
+          if (codes.length) {
+            stopScan();
+            selectItemById(codes[0].rawValue);
+          }
+        }, 700);
+      } catch {
+        showMessage('カメラを開始できませんでした。ブラウザのカメラ許可を確認してください。', true);
+      }
+    }
+
+    function stopScan() {
+      if (detectorTimer) clearInterval(detectorTimer);
+      if (stream) stream.getTracks().forEach(track => track.stop());
+      detectorTimer = null;
+      stream = null;
+      $('scanner').textContent = 'カメラを開始してください';
+    }
+
+    function addSamples() {
+      if (data.items.length && !confirm('サンプル備品を追加しますか？')) return;
+      if (!data.locations.length) {
+        data.locations.push({ id: 'LOC-001', name: '放送室 棚A', description: 'マイク・小物類', photo: '', updatedAt: new Date().toISOString() });
+        data.locations.push({ id: 'LOC-002', name: '放送室 机下', description: 'ケーブル・スタンド類', photo: '', updatedAt: new Date().toISOString() });
+        data.nextLocation = Math.max(data.nextLocation, 3);
+      }
+      data.items.push(
+        sampleItem('ワイヤレスマイク A', 'マイク', 'WM-100', 'LOC-001'),
+        sampleItem('HDMIケーブル 5m', 'ケーブル', 'HDMI-5M', 'LOC-002'),
+        sampleItem('ビデオカメラ', 'カメラ', 'CAM-01', 'LOC-001')
+      );
+      saveData();
+      showMessage('サンプルを追加しました。');
+      render();
+    }
+
+    function sampleItem(name, category, model, locationId) {
+      return {
+        id: `EQ-${String(data.nextItem++).padStart(4, '0')}`,
+        name, category, model, locationId,
+        condition: '良好',
+        photo: '',
+        note: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+    }
+
+    function deleteSelectedItems() {
+      const ids = Array.from(document.querySelectorAll('.delete-check:checked')).map(input => input.value);
+      if (!ids.length) return showMessage('削除する備品にチェックを入れてください。', true);
+      if (!confirm(`${ids.length}件の備品を削除しますか？`)) return;
+      data.items = data.items.filter(item => !ids.includes(item.id));
+      data.loans = data.loans.filter(loan => !ids.includes(loan.itemId));
+      saveData();
+      showMessage('選択した備品を削除しました。');
+      render();
+    }
+
+    function exportData() {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `broadcast-equipment-backup-${new Date().toISOString().slice(0,10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const imported = JSON.parse(await file.text());
+      data = normalizeData(imported);
+      saveData();
+      showMessage('バックアップを読み込みました。');
+      render();
+    }
+
+    function clearItemForm() {
+      $('itemForm').reset();
+      $('itemId').value = '';
+      $('itemPhotoData').value = '';
+    }
+
+    function clearLocationForm() {
+      $('locationForm').reset();
+      $('locationId').value = '';
+      $('locationPhotoData').value = '';
+    }
+
+    function locationName(id) {
+      return data.locations.find(location => location.id === id)?.name || '';
+    }
+
+    function formatDate(value) {
+      if (!value) return '-';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' });
+    }
+
+    async function readPhoto(file, target, onLoad) {
+      if (!file) return;
+      const image = await shrinkImage(file, onLoad ? 1600 : 900, .78);
+      target.value = image;
+      if (onLoad) {
+        onLoad(image);
+        return;
+      }
+      showMessage('写真を読み込みました。保存ボタンを押すと反映されます。');
+    }
+
+    function shrinkImage(file, maxSize, quality) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const img = new Image();
+          img.onload = () => {
+            const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          };
+          img.onerror = reject;
+          img.src = reader.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function showMessage(text, isError = false) {
+      $('message').innerHTML = `<div class="notice ${isError ? 'error' : ''}">${escapeHtml(text)}</div>`;
+      setTimeout(() => { $('message').innerHTML = ''; }, 4200);
+    }
+  </script>
+</body>
+</html>
