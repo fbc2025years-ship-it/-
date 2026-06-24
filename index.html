@@ -199,6 +199,11 @@
       min-height: 58px;
       letter-spacing: 0;
     }
+    .reader-matches {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
     video { width: 100%; max-height: 420px; object-fit: cover; }
     canvas.qr {
       width: min(260px, 100%);
@@ -330,6 +335,7 @@
           </label>
           <button type="submit" class="secondary">IDで表示</button>
         </form>
+        <div id="readerMatches" class="reader-matches"></div>
       </div>
 
       <div class="panel mobile-camera">
@@ -566,11 +572,12 @@
     });
     $('readerForm').addEventListener('submit', event => {
       event.preventDefault();
-      selectItemById($('readerInput').value.trim());
+      openReaderInput();
     });
     $('readerInput').addEventListener('input', () => {
       const value = $('readerInput').value.trim();
-      if (data.items.some(item => item.id === value)) selectItemById(value);
+      renderReaderMatches(value);
+      if (data.items.some(item => item.id.toUpperCase() === value.toUpperCase())) selectItemById(value);
     });
     $('searchInput').addEventListener('input', render);
     $('historySearch').addEventListener('input', renderHistory);
@@ -751,7 +758,7 @@
             <span>${escapeHtml(item.note || '')}</span>
           </div>
           ${location?.photo ? `<div class="card">${photoHtml(location.photo, '保管場所写真')}<span class="muted">保管場所写真: ${escapeHtml(location.name)}</span></div>` : ''}
-          ${status.loan ? `<div class="notice">借りている人: ${escapeHtml(status.loan.borrower)} / 貸出: ${formatDate(status.loan.checkoutAt)}</div>` : ''}
+          ${status.loan ? `<div class="notice">借りている人: ${escapeHtml(status.loan.borrower)} / 貸出: ${formatDate(status.loan.checkoutAt)}${status.loan.note ? ` / ${escapeHtml(status.loan.note)}` : ''}</div>` : ''}
           <div class="actions">
             ${options.simple ? selectedActions(item, status) : ''}
             <button type="button" class="secondary" data-action="select" data-id="${escapeHtml(item.id)}">貸出・返却で開く</button>
@@ -771,6 +778,7 @@
       }
       return `
         <input data-borrower-for="${escapeHtml(item.id)}" placeholder="借りる人（空でも可）">
+        <input data-loan-note-for="${escapeHtml(item.id)}" placeholder="目的・場所・団体（任意）">
         <button type="button" class="big-action" data-action="checkout" data-id="${escapeHtml(item.id)}">貸出する</button>
       `;
     }
@@ -806,6 +814,40 @@
       }
     }
 
+    function openReaderInput() {
+      const value = $('readerInput').value.trim();
+      if (!value) return;
+      const exact = data.items.find(item => item.id.toUpperCase() === value.toUpperCase());
+      if (exact) {
+        selectItemById(value);
+        return;
+      }
+      renderReaderMatches(value, true);
+    }
+
+    function renderReaderMatches(rawQuery, force = false) {
+      const query = String(rawQuery || '').trim().toLowerCase();
+      if (!query) {
+        $('readerMatches').innerHTML = '';
+        return;
+      }
+      const matches = data.items
+        .filter(item => [item.id, item.name, item.category, item.model, locationName(item.locationId)]
+          .join(' ')
+          .toLowerCase()
+          .includes(query))
+        .slice(0, 12);
+      if (!matches.length) {
+        $('readerMatches').innerHTML = force ? '<p class="muted">一致する備品が見つかりません。</p>' : '';
+        return;
+      }
+      $('readerMatches').innerHTML = `
+        <p class="muted">候補から選んでください。</p>
+        ${matches.map(item => itemCard(item, { compact: true })).join('')}
+      `;
+      document.querySelectorAll('#readerMatches [data-action]').forEach(button => button.addEventListener('click', handleAction));
+    }
+
     function selectItemById(rawId) {
       const id = String(rawId || '').trim().toUpperCase();
       if (!id) return;
@@ -816,6 +858,7 @@
         return;
       }
       $('readerInput').value = '';
+      $('readerMatches').innerHTML = '';
       showSelectedItem(item);
     }
 
@@ -830,12 +873,14 @@
       if (data.loans.some(loan => loan.itemId === item.id)) return showMessage('この備品はすでに貸出中です。', true);
       const borrowerInput = Array.from(document.querySelectorAll('[data-borrower-for]'))
         .find(input => input.dataset.borrowerFor === item.id);
+      const noteInput = Array.from(document.querySelectorAll('[data-loan-note-for]'))
+        .find(input => input.dataset.loanNoteFor === item.id);
       data.loans.push({
         id: `LOAN-${String(data.nextLoan++).padStart(4, '0')}`,
         itemId: item.id,
         borrower: borrowerInput?.value.trim() || '未入力',
         dueDate: '',
-        note: '',
+        note: noteInput?.value.trim() || '',
         checkoutAt: new Date().toISOString()
       });
       saveData();
