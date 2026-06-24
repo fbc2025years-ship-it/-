@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>放送委員会 備品管理</title>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <style>
     :root {
       --bg: #f5f7fa;
@@ -214,7 +215,8 @@
     .admin-only { display: none; }
     body.admin-mode .admin-only { display: block; }
     body.admin-mode button.admin-only { display: inline-flex; align-items: center; justify-content: center; }
-    .mobile-camera { display: block; }
+    .mobile-camera { display: none; }
+    .camera-capture-input { display: none; }
     .room-map {
       position: relative;
       min-height: 520px;
@@ -254,8 +256,17 @@
       text-align: center;
       color: #7a2853;
       cursor: pointer;
+      touch-action: none;
     }
     .map-pin:hover { background: #fff0f6; }
+    .map-pin.dragging { opacity: .75; }
+    .map-editing .map-pin {
+      border-style: dashed;
+      cursor: grab;
+    }
+    .map-editing .map-pin:active {
+      cursor: grabbing;
+    }
     .map-pin strong { color: #9f1f62; }
     .map-pin small { color: var(--muted); font-weight: 700; }
     .map-items {
@@ -280,6 +291,7 @@
       .photo { width: 76px; }
       .actions button { flex: 1 1 130px; }
       .desktop-reader-note { display: none; }
+      .mobile-camera { display: block; }
       .room-map { min-height: 620px; }
       .map-pin { min-width: 104px; font-size: 12px; }
     }
@@ -314,7 +326,7 @@
         <p class="muted desktop-reader-note">備品IDを手入力するか、USBコードリーダーでQRコードを読み取ると、自動で備品が表示されます。</p>
         <form id="readerForm" class="grid">
           <label>備品IDを入力
-            <input id="readerInput" class="reader-input" autocomplete="off" placeholder="例：EQ-0001">
+            <input id="readerInput" class="reader-input" autocomplete="off" placeholder="例：MC001">
           </label>
           <button type="submit" class="secondary">IDで表示</button>
         </form>
@@ -325,8 +337,10 @@
         <div class="scanner" id="scanner">カメラを開始してください</div>
         <div class="actions">
           <button type="button" id="startScanButton">カメラ開始</button>
+          <button type="button" class="secondary" id="openCameraAppButton">カメラアプリで撮る</button>
           <button type="button" class="secondary" id="stopScanButton">停止</button>
         </div>
+        <input class="camera-capture-input" id="qrPhotoInput" type="file" accept="image/*" capture="environment">
       </div>
 
       <div id="selectedPanel" class="panel hidden"></div>
@@ -347,6 +361,9 @@
       <div class="panel">
         <h1>放送室の配置図</h1>
         <p class="muted">アップロードした見取り図の上で、棚や放送卓のIDをクリックすると中にある備品を見られます。</p>
+        <div class="actions admin-only">
+          <button type="button" class="secondary" id="toggleMapEditButton">配置編集を開始</button>
+        </div>
         <div id="roomMap" class="room-map"></div>
         <div id="mapDetail" class="map-detail"></div>
       </div>
@@ -399,13 +416,16 @@
       <div class="panel">
         <h2>備品登録・編集</h2>
         <form id="itemForm" class="grid two">
-          <input type="hidden" id="itemId">
+          <input type="hidden" id="originalItemId">
           <input type="hidden" id="itemPhotoData">
+          <label>備品ID
+            <input id="itemId" placeholder="空欄ならカテゴリーから自動作成">
+          </label>
           <label>備品名
             <input id="itemName" required placeholder="例：ワイヤレスマイク A">
           </label>
           <label>カテゴリ
-            <input id="itemCategory" placeholder="例：マイク、カメラ、ケーブル">
+            <select id="itemCategory"></select>
           </label>
           <label>型番
             <input id="itemModel" placeholder="例：SM58">
@@ -435,10 +455,29 @@
       </div>
 
       <div class="panel">
+        <h2>カテゴリーテンプレート</h2>
+        <form id="categoryForm" class="grid two">
+          <label>カテゴリー名
+            <input id="categoryName" required placeholder="例：マイク">
+          </label>
+          <label>IDプレフィックス
+            <input id="categoryPrefix" required placeholder="例：MC">
+          </label>
+          <div class="actions" style="grid-column: 1 / -1;">
+            <button type="submit">カテゴリーを追加</button>
+          </div>
+        </form>
+        <div id="categoryList" class="list" style="margin-top: 14px;"></div>
+      </div>
+
+      <div class="panel">
         <h2>保管場所管理</h2>
         <form id="locationForm" class="grid two">
-          <input type="hidden" id="locationId">
+          <input type="hidden" id="originalLocationId">
           <input type="hidden" id="locationPhotoData">
+          <label>保管場所ID
+            <input id="locationId" placeholder="例：LOC-001">
+          </label>
           <label>保管場所名
             <input id="locationName" required placeholder="例：放送室 棚A">
           </label>
@@ -486,6 +525,13 @@
       loans: [],
       history: [],
       floorplan: '',
+      categories: [
+        { name: 'マイク', prefix: 'MC' },
+        { name: 'パソコン', prefix: 'PC' },
+        { name: 'カメラ', prefix: 'CM' },
+        { name: 'ケーブル', prefix: 'CB' },
+        { name: 'その他', prefix: 'OT' }
+      ],
       nextItem: 1,
       nextLocation: 1,
       nextLoan: 1
@@ -496,6 +542,8 @@
     let sharedServerReady = false;
     let sharedApplying = false;
     let sharedSaveTimer = null;
+    let mapEditMode = false;
+    let draggingLocationId = null;
 
     const $ = id => document.getElementById(id);
     const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -522,15 +570,18 @@
     });
     $('readerInput').addEventListener('input', () => {
       const value = $('readerInput').value.trim();
-      if (/^EQ-\d{4,}$/i.test(value)) selectItemById(value);
+      if (data.items.some(item => item.id === value)) selectItemById(value);
     });
     $('searchInput').addEventListener('input', render);
     $('historySearch').addEventListener('input', renderHistory);
     $('clearHistorySearch').addEventListener('click', () => { $('historySearch').value = ''; renderHistory(); });
     $('sampleButton').addEventListener('click', addSamples);
     $('startScanButton').addEventListener('click', startScan);
+    $('openCameraAppButton').addEventListener('click', () => $('qrPhotoInput').click());
+    $('qrPhotoInput').addEventListener('change', scanQrPhoto);
     $('stopScanButton').addEventListener('click', stopScan);
     $('itemForm').addEventListener('submit', saveItem);
+    $('categoryForm').addEventListener('submit', saveCategory);
     $('locationForm').addEventListener('submit', saveLocation);
     $('clearItemForm').addEventListener('click', clearItemForm);
     $('clearLocationForm').addEventListener('click', clearLocationForm);
@@ -540,6 +591,7 @@
     $('importFile').addEventListener('change', importData);
     $('itemPhoto').addEventListener('change', event => readPhoto(event.target.files[0], $('itemPhotoData')));
     $('locationPhoto').addEventListener('change', event => readPhoto(event.target.files[0], $('locationPhotoData')));
+    $('toggleMapEditButton').addEventListener('click', toggleMapEdit);
     $('floorplanImage').addEventListener('change', event => readPhoto(event.target.files[0], $('floorplanData'), image => {
       data.floorplan = image;
       saveData();
@@ -577,6 +629,8 @@
       return {
         ...structuredClone(initialData),
         ...parsed,
+        categories: (parsed.categories && parsed.categories.length ? parsed.categories : initialData.categories)
+          .map(category => ({ name: category.name, prefix: String(category.prefix || '').toUpperCase() })),
         items: (parsed.items || []).map(item => ({ photo: '', ...item })),
         locations: (parsed.locations || []).map(location => ({ photo: '', ...location }))
       };
@@ -649,6 +703,8 @@
     }
 
     function render() {
+      renderCategoryOptions();
+      renderCategories();
       renderLocationOptions();
       renderItems();
       renderMap();
@@ -738,6 +794,7 @@
       if (action === 'return') quickReturn(item);
       if (action === 'edit') {
         activate('admin');
+        $('originalItemId').value = item.id;
         $('itemId').value = item.id;
         $('itemName').value = item.name;
         $('itemCategory').value = item.category || '';
@@ -820,10 +877,26 @@
       panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
+    function saveCategory(event) {
+      event.preventDefault();
+      const name = $('categoryName').value.trim();
+      const prefix = $('categoryPrefix').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (!name || !prefix) return showMessage('カテゴリー名とIDプレフィックスを入力してください。', true);
+      const existing = data.categories.find(category => category.name === name);
+      if (existing) existing.prefix = prefix;
+      else data.categories.push({ name, prefix });
+      $('categoryForm').reset();
+      saveData();
+      render();
+      showMessage('カテゴリーを保存しました。');
+    }
+
     function saveItem(event) {
       event.preventDefault();
-      const id = $('itemId').value || `EQ-${String(data.nextItem++).padStart(4, '0')}`;
-      const existing = data.items.find(item => item.id === id);
+      const originalId = $('originalItemId').value;
+      const id = $('itemId').value.trim() || nextItemId($('itemCategory').value);
+      const existing = data.items.find(item => item.id === originalId || item.id === id);
+      if (data.items.some(item => item.id === id && item.id !== originalId)) return showMessage('同じ備品IDがすでにあります。', true);
       const item = {
         id,
         name: $('itemName').value.trim(),
@@ -838,25 +911,46 @@
       };
       if (existing) Object.assign(existing, item);
       else data.items.push(item);
+      if (originalId && originalId !== id) {
+        data.loans.forEach(loan => { if (loan.itemId === originalId) loan.itemId = id; });
+        data.history.forEach(row => { if (row.itemId === originalId) row.itemId = id; });
+      }
       saveData();
       clearItemForm();
       showMessage('備品を保存しました。');
       render();
     }
 
+    function nextItemId(categoryName) {
+      const category = data.categories.find(candidate => candidate.name === categoryName) || data.categories[0];
+      const prefix = String(category?.prefix || 'EQ').toUpperCase();
+      const max = data.items.reduce((current, item) => {
+        const match = String(item.id || '').match(new RegExp(`^${prefix}(\\d+)$`));
+        return match ? Math.max(current, Number(match[1])) : current;
+      }, 0);
+      return `${prefix}${String(max + 1).padStart(3, '0')}`;
+    }
+
     function saveLocation(event) {
       event.preventDefault();
-      const id = $('locationId').value || `LOC-${String(data.nextLocation++).padStart(3, '0')}`;
-      const existing = data.locations.find(location => location.id === id);
+      const originalId = $('originalLocationId').value;
+      const id = $('locationId').value.trim() || `LOC-${String(data.nextLocation++).padStart(3, '0')}`;
+      const existing = data.locations.find(location => location.id === originalId || location.id === id);
+      if (data.locations.some(location => location.id === id && location.id !== originalId)) return showMessage('同じ保管場所IDがすでにあります。', true);
       const location = {
         id,
         name: $('locationName').value.trim(),
         description: $('locationDescription').value.trim(),
         photo: $('locationPhotoData').value || existing?.photo || '',
+        mapX: existing?.mapX || '',
+        mapY: existing?.mapY || '',
         updatedAt: new Date().toISOString()
       };
       if (existing) Object.assign(existing, location);
       else data.locations.push(location);
+      if (originalId && originalId !== id) {
+        data.items.forEach(item => { if (item.locationId === originalId) item.locationId = id; });
+      }
       saveData();
       clearLocationForm();
       showMessage('保管場所を保存しました。');
@@ -906,7 +1000,7 @@
     }
 
     function renderLocations() {
-      $('locationList').innerHTML = data.locations.map(location => `
+      $('locationList').innerHTML = data.locations.map((location, index) => `
         <article class="card">
           <div class="card-head">
             ${photoHtml(location.photo, '保管場所写真')}
@@ -919,15 +1013,28 @@
           </div>
           <div class="actions">
             <button type="button" class="secondary" onclick="editLocation('${escapeHtml(location.id)}')">編集</button>
+            <button type="button" class="secondary" onclick="moveLocation(${index}, -1)">上へ</button>
+            <button type="button" class="secondary" onclick="moveLocation(${index}, 1)">下へ</button>
           </div>
         </article>
       `).join('') || '<p class="muted">保管場所がまだ登録されていません。</p>';
     }
 
+    window.moveLocation = function(index, direction) {
+      const next = index + direction;
+      if (next < 0 || next >= data.locations.length) return;
+      const [location] = data.locations.splice(index, 1);
+      data.locations.splice(next, 0, location);
+      saveData();
+      render();
+    };
+
     function renderMap() {
       const map = $('roomMap');
       const pins = data.locations.map((location, index) => {
-        const position = autoMapPosition(location, index);
+        const position = location.mapX && location.mapY
+          ? { x: Number(location.mapX), y: Number(location.mapY) }
+          : autoMapPosition(location, index);
         const items = data.items.filter(item => item.locationId === location.id);
         return `
           <button type="button" class="map-pin" data-map-location="${escapeHtml(location.id)}" style="left:${position.x}%; top:${position.y}%;">
@@ -940,9 +1047,54 @@
         ${data.floorplan ? `<img class="floorplan-image" src="${data.floorplan}" alt="放送室の見取り図">` : '<div class="notice map-empty">管理者ツールで放送室の見取り図を登録してください。</div>'}
         ${pins || '<div class="notice" style="position:absolute; left:16px; right:16px; top:58px;">保管場所を登録すると配置図に表示されます。</div>'}
       `;
+      map.classList.toggle('map-editing', mapEditMode);
       document.querySelectorAll('[data-map-location]').forEach(button => {
-        button.addEventListener('click', () => showMapLocation(button.dataset.mapLocation));
+        button.addEventListener('click', () => {
+          if (!mapEditMode) showMapLocation(button.dataset.mapLocation);
+        });
+        button.addEventListener('pointerdown', startMapDrag);
       });
+    }
+
+    function toggleMapEdit() {
+      mapEditMode = !mapEditMode;
+      $('toggleMapEditButton').textContent = mapEditMode ? '配置編集を終了' : '配置編集を開始';
+      renderMap();
+      showMessage(mapEditMode ? '保管場所IDをドラッグして動かせます。' : '配置編集を終了しました。');
+    }
+
+    function startMapDrag(event) {
+      if (!mapEditMode) return;
+      event.preventDefault();
+      draggingLocationId = event.currentTarget.dataset.mapLocation;
+      event.currentTarget.classList.add('dragging');
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.currentTarget.addEventListener('pointermove', dragMapPin);
+      event.currentTarget.addEventListener('pointerup', stopMapDrag, { once: true });
+      event.currentTarget.addEventListener('pointercancel', stopMapDrag, { once: true });
+    }
+
+    function dragMapPin(event) {
+      if (!draggingLocationId) return;
+      const map = $('roomMap');
+      const rect = map.getBoundingClientRect();
+      const x = Math.max(4, Math.min(96, ((event.clientX - rect.left) / rect.width) * 100));
+      const y = Math.max(4, Math.min(96, ((event.clientY - rect.top) / rect.height) * 100));
+      event.currentTarget.style.left = `${x}%`;
+      event.currentTarget.style.top = `${y}%`;
+      const location = data.locations.find(candidate => candidate.id === draggingLocationId);
+      if (location) {
+        location.mapX = Math.round(x * 10) / 10;
+        location.mapY = Math.round(y * 10) / 10;
+      }
+    }
+
+    function stopMapDrag(event) {
+      event.currentTarget.classList.remove('dragging');
+      event.currentTarget.removeEventListener('pointermove', dragMapPin);
+      draggingLocationId = null;
+      saveData();
+      renderMap();
     }
 
     function showMapLocation(locationId) {
@@ -965,6 +1117,7 @@
       const location = data.locations.find(candidate => candidate.id === id);
       if (!location) return;
       $('locationId').value = location.id;
+      $('originalLocationId').value = location.id;
       $('locationName').value = location.name;
       $('locationDescription').value = location.description || '';
       $('locationPhotoData').value = location.photo || '';
@@ -995,6 +1148,38 @@
       return positions[index % positions.length];
     }
 
+    function renderCategoryOptions() {
+      $('itemCategory').innerHTML = data.categories
+        .map(category => `<option value="${escapeHtml(category.name)}">${escapeHtml(category.name)}（${escapeHtml(category.prefix)}）</option>`)
+        .join('');
+    }
+
+    function renderCategories() {
+      $('categoryList').innerHTML = data.categories.map(category => `
+        <article class="card">
+          <div class="card-head">
+            <div class="photo placeholder">ID</div>
+            <div class="title">
+              <strong>${escapeHtml(category.name)}</strong>
+              <span>${escapeHtml(category.prefix)}001 のように採番</span>
+            </div>
+            <span></span>
+          </div>
+          <div class="actions">
+            <button type="button" class="danger" onclick="deleteCategory('${escapeHtml(category.name)}')">削除</button>
+          </div>
+        </article>
+      `).join('');
+    }
+
+    window.deleteCategory = function(name) {
+      if (data.categories.length <= 1) return showMessage('カテゴリーは最低1つ必要です。', true);
+      if (!confirm(`${name} を削除しますか？`)) return;
+      data.categories = data.categories.filter(category => category.name !== name);
+      saveData();
+      render();
+    };
+
     function renderLocationOptions() {
       $('itemLocation').innerHTML = '<option value="">未設定</option>' + data.locations
         .map(location => `<option value="${escapeHtml(location.id)}">${escapeHtml(location.name)}</option>`)
@@ -1004,7 +1189,7 @@
     async function startScan() {
       try {
         if (!('BarcodeDetector' in window)) {
-          $('scanner').textContent = 'このブラウザではカメラ読み取りが使えません。備品IDを手入力してください。';
+          $('scanner').textContent = 'このブラウザではカメラ読み取りが使えません。備品IDを手入力するか、カメラアプリで撮って読み取ってください。';
           return;
         }
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
@@ -1027,6 +1212,60 @@
       }
     }
 
+    async function scanQrPhoto(event) {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) return;
+      try {
+        $('scanner').textContent = '写真からQRを読み取っています...';
+        const code = await detectQrFromPhoto(file);
+        if (!code) {
+          $('scanner').textContent = 'QRコードが見つかりませんでした。もう一度撮るか、備品IDを手入力してください。';
+          return;
+        }
+        selectItemById(code);
+        $('scanner').textContent = 'QRコードを読み取りました。';
+      } catch {
+        $('scanner').textContent = '写真から読み取れませんでした。備品IDを手入力してください。';
+      }
+    }
+
+    async function detectQrFromPhoto(file) {
+      const image = await loadImage(file);
+      if ('BarcodeDetector' in window) {
+        const detector = new BarcodeDetector({ formats: ['qr_code'] });
+        const codes = await detector.detect(image);
+        if (codes.length) return codes[0].rawValue;
+      }
+      if (typeof jsQR !== 'function') return '';
+      const canvas = document.createElement('canvas');
+      const maxSize = 1600;
+      const scale = Math.min(1, maxSize / Math.max(image.naturalWidth, image.naturalHeight));
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const result = jsQR(imageData.data, imageData.width, imageData.height);
+      return result?.data || '';
+    }
+
+    function loadImage(file) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        const url = URL.createObjectURL(file);
+        image.onload = () => {
+          URL.revokeObjectURL(url);
+          resolve(image);
+        };
+        image.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error('image load failed'));
+        };
+        image.src = url;
+      });
+    }
+
     function stopScan() {
       if (detectorTimer) clearInterval(detectorTimer);
       if (stream) stream.getTracks().forEach(track => track.stop());
@@ -1042,11 +1281,11 @@
         data.locations.push({ id: 'LOC-002', name: '放送室 机下', description: 'ケーブル・スタンド類', photo: '', updatedAt: new Date().toISOString() });
         data.nextLocation = Math.max(data.nextLocation, 3);
       }
-      data.items.push(
-        sampleItem('ワイヤレスマイク A', 'マイク', 'WM-100', 'LOC-001'),
-        sampleItem('HDMIケーブル 5m', 'ケーブル', 'HDMI-5M', 'LOC-002'),
-        sampleItem('ビデオカメラ', 'カメラ', 'CAM-01', 'LOC-001')
-      );
+      [
+        ['ワイヤレスマイク A', 'マイク', 'WM-100', 'LOC-001'],
+        ['HDMIケーブル 5m', 'ケーブル', 'HDMI-5M', 'LOC-002'],
+        ['ビデオカメラ', 'カメラ', 'CAM-01', 'LOC-001']
+      ].forEach(item => data.items.push(sampleItem(...item)));
       saveData();
       showMessage('サンプルを追加しました。');
       render();
@@ -1054,7 +1293,7 @@
 
     function sampleItem(name, category, model, locationId) {
       return {
-        id: `EQ-${String(data.nextItem++).padStart(4, '0')}`,
+        id: nextItemId(category),
         name, category, model, locationId,
         condition: '良好',
         photo: '',
@@ -1097,12 +1336,14 @@
 
     function clearItemForm() {
       $('itemForm').reset();
+      $('originalItemId').value = '';
       $('itemId').value = '';
       $('itemPhotoData').value = '';
     }
 
     function clearLocationForm() {
       $('locationForm').reset();
+      $('originalLocationId').value = '';
       $('locationId').value = '';
       $('locationPhotoData').value = '';
     }
